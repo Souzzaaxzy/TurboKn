@@ -41,3 +41,10 @@ artefato `TurboKn-debug-apk`. O runner é fixado de propósito.
   do DND, `cmd game reset` no fim) para não deixar o aparelho alterado.
 - **Sem notificação persistente.** A detecção automática usa
   `AccessibilityService` justamente para evitar foreground service.
+- **Ordem ao abrir o jogo.** O perfil é aplicado *antes* de lançar o app
+  (`InstalledApps.launch`). Invertendo a ordem, o jogo sobe com a configuração
+  padrão e o downscale só vale no próximo início.
+- **Ambiente de build.** O JDK não sobrevive a um reset do sandbox; o Android
+  SDK (`/workspace/android-sdk`) e o Gradle (`/workspace/tools`) sobrevivem.
+  Se `java` sumir, reinstale com `apt-get install openjdk-21-jdk-headless`
+  depois de um `apt-get update`.

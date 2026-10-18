@@ -78,7 +78,7 @@ fun MainScreen(
         GameSelectorCard(
             recents = state.recents,
             selected = state.selected,
-            onPick = vm::select,
+            onPick = vm::openGame,
             onBrowse = { pickerOpen = true },
         )
 

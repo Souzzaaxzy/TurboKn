@@ -52,6 +52,12 @@ internal fun GameSelectorCard(
                     )
                 }
             }
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = "Toque no jogo para abrir com o perfil já aplicado.",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.outline,
+            )
         }
 
         Spacer(Modifier.height(14.dp))

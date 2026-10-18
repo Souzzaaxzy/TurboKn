@@ -14,6 +14,7 @@ import com.turbokn.app.core.ProfileEngine
 import com.turbokn.app.core.ShizukuNotifier
 import com.turbokn.app.data.AppEntry
 import com.turbokn.app.data.InstalledApps
+import com.turbokn.app.data.ProfileSettings
 import com.turbokn.app.data.SettingsStore
 import com.turbokn.app.shizuku.ShizukuShell
 import kotlinx.coroutines.Dispatchers
@@ -152,6 +153,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /**
+     * Tapping a game in the recent strip both selects it and opens it, so the
+     * user goes straight into the game with the profile already applied.
+     */
+    fun openGame(entry: AppEntry) {
+        select(entry)
+        launchGame(entry)
+    }
+
     private suspend fun refreshRecents() {
         val context = getApplication<Application>()
         val saved = store.current()
@@ -197,15 +207,64 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             appendLog("Ativando modo performance para ${target.label}…")
             val settings = store.current()
-            val lines = withContext(Dispatchers.IO) {
-                zenModeBefore = if (settings.dnd) GameActions.zenMode() else null
-                ProfileEngine.apply(settings, target.packageName)
-            }
-            lines.forEach(::appendLog)
+            withContext(Dispatchers.IO) { applyProfile(settings, target.packageName) }
             ShizukuNotifier.clear(getApplication())
             _state.update { it.copy(active = true, activePackage = target.packageName) }
             refreshMetrics()
         }
+    }
+
+    /**
+     * Applies the profile to [target] and opens it, so the user lands directly
+     * in the game with the settings already in place. Launching before applying
+     * would let the game boot with the stock configuration and the downscale
+     * would only take effect on the next start.
+     */
+    fun launchGame(target: AppEntry) {
+        val s = _state.value
+        if (s.shizuku != ShizukuState.READY) {
+            appendLog("Shizuku indisponível. Abra o app Shizuku e conceda a permissão.")
+            return
+        }
+        if (s.activePackage == target.packageName) {
+            viewModelScope.launch { startGame(target) }
+            return
+        }
+
+        viewModelScope.launch {
+            if (s.activePackage != null) {
+                val previous = s.activePackage
+                val previousZen = zenModeBefore
+                zenModeBefore = null
+                withContext(Dispatchers.IO) { revertProfile(previous, previousZen) }
+            }
+            appendLog("Preparando ${target.label}…")
+            val settings = store.current()
+            withContext(Dispatchers.IO) { applyProfile(settings, target.packageName) }
+            ShizukuNotifier.clear(getApplication())
+            _state.update { it.copy(active = true, activePackage = target.packageName) }
+            startGame(target)
+            refreshMetrics()
+        }
+    }
+
+    private suspend fun startGame(target: AppEntry) {
+        val launched = withContext(Dispatchers.IO) {
+            InstalledApps.launch(getApplication(), target.packageName)
+        }
+        appendLog(
+            if (launched) "abrindo ${target.label}" else "não foi possível abrir ${target.label}"
+        )
+    }
+
+    private fun applyProfile(settings: ProfileSettings, pkg: String) {
+        zenModeBefore = if (settings.dnd) GameActions.zenMode() else null
+        ProfileEngine.apply(settings, pkg).forEach(::appendLog)
+    }
+
+    private suspend fun revertProfile(pkg: String, previousZenMode: Int?) {
+        val settings = store.current()
+        ProfileEngine.revert(settings, pkg, previousZenMode)
     }
 
     fun deactivate(silent: Boolean = false) {
@@ -213,10 +272,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val pkg = s.activePackage
         viewModelScope.launch {
             if (pkg != null && s.shizuku == ShizukuState.READY) {
-                val settings = store.current()
                 val previousZen = zenModeBefore
                 zenModeBefore = null
-                withContext(Dispatchers.IO) { ProfileEngine.revert(settings, pkg, previousZen) }
+                withContext(Dispatchers.IO) { revertProfile(pkg, previousZen) }
             }
             _state.update {
                 it.copy(active = false, activePackage = null, metrics = DeviceMetrics())

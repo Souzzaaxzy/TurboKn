@@ -53,4 +53,19 @@ object InstalledApps {
     } catch (e: PackageManager.NameNotFoundException) {
         false
     }
+
+    /**
+     * Opens the app's launcher activity. Used when the user taps a recent game
+     * so it starts with the profile already applied.
+     */
+    fun launch(context: Context, pkg: String): Boolean {
+        val intent = context.packageManager.getLaunchIntentForPackage(pkg) ?: return false
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        return try {
+            context.startActivity(intent)
+            true
+        } catch (e: Exception) {
+            false
+        }
+    }
 }

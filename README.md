@@ -23,6 +23,7 @@ Visual preto, branco e cinza, com tema de samurai na neve.
 | Não perturbe | Silencia notificações e chamadas durante o jogo |
 | Override térmico | Impede o sistema de reduzir os clocks por temperatura |
 | Jogos recentes | Guarda os jogos escolhidos e mostra o ícone de cada um |
+| Abrir com o perfil pronto | Tocar no jogo aplica o perfil e abre ele na sequência |
 | Modo automático | Ativa o perfil sozinho quando um jogo abre |
 | Medição | Mostra temperatura, clock da CPU, fluidez e nível de throttling |
 | Status do Shizuku | Indica se o Shizuku está ligado e se o app está conectado a ele |
@@ -40,7 +41,8 @@ Visual preto, branco e cinza, com tema de samurai na neve.
 2. Ative o Shizuku e conceda a permissão ao TurboKn.
 3. Escolha o jogo. Ele passa a aparecer nos recentes.
 4. Ajuste a escala de renderização e o limite de FPS, se quiser.
-5. Toque em **ATIVAR**.
+5. Toque em **ATIVAR**, ou toque no jogo nos recentes para abrir ele já com o
+   perfil aplicado.
 
 Para o modo automático, ligue a chave **Ativar ao entrar em jogos** e habilite o
 serviço de acessibilidade quando solicitado. Se o Shizuku estiver desligado
