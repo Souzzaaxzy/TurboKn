@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">TurboKn</string>
+    <string name="accessibility_label">TurboKn — detecção de jogos</string>
+    <string name="accessibility_description">Detecta qual aplicativo está em primeiro plano para ativar automaticamente o modo de desempenho quando um jogo abre. Nenhuma informação é coletada ou enviada.</string>
+    <string name="notif_channel_name">Avisos do TurboKn</string>
+    <string name="notif_channel_desc">Aviso exibido apenas quando o Shizuku está desligado e um jogo é detectado.</string>
+    <string name="notif_shizuku_title">Shizuku desligado</string>
+    <string name="notif_shizuku_text">Um jogo foi detectado, mas o modo de desempenho não pôde ser ativado. Abra o Shizuku e conceda a permissão.</string>
+</resources>
