@@ -21,6 +21,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -82,6 +83,8 @@ fun MainScreen(
         )
 
         ActivateButton(state = state, vm = vm)
+
+        QuickActions(vm = vm)
 
         MetricsCard(metrics = state.metrics, active = state.active)
 
@@ -219,6 +222,36 @@ private fun ActivateButton(state: UiState, vm: MainViewModel) {
             text = if (active) "DESATIVAR" else "ATIVAR",
             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
         )
+    }
+}
+
+@Composable
+private fun QuickActions(vm: MainViewModel) {
+    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        OutlinedButton(
+            onClick = vm::freeMemory,
+            modifier = Modifier
+                .weight(1f)
+                .height(46.dp),
+            shape = RoundedCornerShape(12.dp),
+            colors = ButtonDefaults.outlinedButtonColors(
+                contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+            ),
+        ) {
+            Text("LIBERAR MEMÓRIA", style = MaterialTheme.typography.labelSmall)
+        }
+        OutlinedButton(
+            onClick = vm::restoreDefaults,
+            modifier = Modifier
+                .weight(1f)
+                .height(46.dp),
+            shape = RoundedCornerShape(12.dp),
+            colors = ButtonDefaults.outlinedButtonColors(
+                contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+            ),
+        ) {
+            Text("RESTAURAR PADRÕES", style = MaterialTheme.typography.labelSmall)
+        }
     }
 }
 

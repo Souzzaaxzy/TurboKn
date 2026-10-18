@@ -26,6 +26,7 @@ Visual preto, branco e cinza, com tema de samurai na neve.
 | Modo automático | Ativa o perfil sozinho quando um jogo abre |
 | Medição | Mostra temperatura, clock da CPU, fluidez e nível de throttling |
 | Status do Shizuku | Indica se o Shizuku está ligado e se o app está conectado a ele |
+| Restaurar padrões | Desfaz todas as alterações e volta o aparelho ao normal |
 
 ## Requisitos
 

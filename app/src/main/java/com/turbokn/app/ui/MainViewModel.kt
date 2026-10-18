@@ -231,6 +231,40 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** Frees background processes on demand, without activating the whole profile. */
+    fun freeMemory() {
+        if (_state.value.shizuku != ShizukuState.READY) {
+            appendLog("Shizuku indisponível. Abra o app Shizuku e conceda a permissão.")
+            return
+        }
+        viewModelScope.launch {
+            val out = withContext(Dispatchers.IO) { GameActions.killBackground() }
+            appendLog("memória liberada${if (out.isBlank()) "" else ": $out"}")
+        }
+    }
+
+    /** Undoes every change the profile made, leaving the device at its defaults. */
+    fun restoreDefaults() {
+        val s = _state.value
+        val pkg = s.activePackage ?: s.selected?.packageName
+        if (pkg == null) {
+            appendLog("Selecione um jogo primeiro.")
+            return
+        }
+        if (s.shizuku != ShizukuState.READY) {
+            appendLog("Shizuku indisponível. Abra o app Shizuku e conceda a permissão.")
+            return
+        }
+        viewModelScope.launch {
+            val settings = store.current()
+            val previousZen = zenModeBefore
+            zenModeBefore = null
+            withContext(Dispatchers.IO) { ProfileEngine.revert(settings, pkg, previousZen) }
+            _state.update { it.copy(active = false, activePackage = null) }
+            appendLog("padrões restaurados para $pkg")
+        }
+    }
+
     private fun appendLog(line: String) {
         _state.update { it.copy(log = (it.log + line).takeLast(60)) }
     }
