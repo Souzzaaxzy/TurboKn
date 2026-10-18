@@ -218,7 +218,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 zenModeBefore = null
                 withContext(Dispatchers.IO) { ProfileEngine.revert(settings, pkg, previousZen) }
             }
-            _state.update { it.copy(active = false, activePackage = null) }
+            _state.update {
+                it.copy(active = false, activePackage = null, metrics = DeviceMetrics())
+            }
             if (!silent) appendLog("modo desativado, configurações restauradas")
         }
     }
