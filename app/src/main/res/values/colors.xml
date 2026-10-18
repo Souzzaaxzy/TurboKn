@@ -1,8 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="ink_black">#FF0A0A0B</color>
-    <color name="sumi">#FF141416</color>
-    <color name="snow">#FFF2F2F0</color>
-    <color name="frost">#FFB9BDC4</color>
-    <color name="steel">#FF8A9099</color>
 </resources>

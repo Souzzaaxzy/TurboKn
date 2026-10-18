@@ -22,6 +22,9 @@ object ShizukuShell {
     @Volatile
     private var service: ITurboKnService? = null
 
+    @Volatile
+    private var binding: Boolean = false
+
     private val userServiceArgs = UserServiceArgs(
         ComponentName(BuildConfig.APPLICATION_ID, TurboKnUserService::class.java.name)
     )
@@ -63,20 +66,27 @@ object ShizukuShell {
     private val connection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
             service = ITurboKnService.Stub.asInterface(binder)
+            binding = false
             Log.i(TAG, "user service connected")
         }
 
         override fun onServiceDisconnected(name: ComponentName?) {
             service = null
+            binding = false
             Log.i(TAG, "user service disconnected")
         }
     }
 
     fun bind() {
         if (!isPermissionGranted) return
+        // Binding is asynchronous; a repeated call while one is in flight would
+        // register the same connection twice and leak a service binding.
+        if (service != null || binding) return
+        binding = true
         try {
             Shizuku.bindUserService(userServiceArgs, connection)
         } catch (e: Exception) {
+            binding = false
             Log.e(TAG, "bind failed", e)
         }
     }
@@ -88,6 +98,7 @@ object ShizukuShell {
             Log.e(TAG, "unbind failed", e)
         }
         service = null
+        binding = false
     }
 
     /**

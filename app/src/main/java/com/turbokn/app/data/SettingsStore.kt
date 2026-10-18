@@ -21,6 +21,8 @@ data class ProfileSettings(
     val downscale: String = "disable",
     val fps: Int = 0,
     val thermalStatus: Int = 0,
+    val dnd: Boolean = false,
+    val recentPackages: List<String> = emptyList(),
 )
 
 /**
@@ -36,6 +38,8 @@ class SettingsStore(private val context: Context) {
         val DOWNSCALE = stringPreferencesKey("downscale")
         val FPS = intPreferencesKey("fps")
         val THERMAL = intPreferencesKey("thermal_status")
+        val DND = booleanPreferencesKey("dnd")
+        val RECENTS = stringPreferencesKey("recent_packages")
     }
 
     val flow: Flow<ProfileSettings> = context.dataStore.data.map { prefs ->
@@ -46,6 +50,11 @@ class SettingsStore(private val context: Context) {
             downscale = prefs[Keys.DOWNSCALE] ?: "disable",
             fps = prefs[Keys.FPS] ?: 0,
             thermalStatus = prefs[Keys.THERMAL] ?: 0,
+            dnd = prefs[Keys.DND] ?: false,
+            recentPackages = prefs[Keys.RECENTS]
+                ?.split(RECENT_SEPARATOR)
+                ?.filter { it.isNotBlank() }
+                ?: emptyList(),
         )
     }
 
@@ -63,4 +72,25 @@ class SettingsStore(private val context: Context) {
     suspend fun setFps(value: Int) = context.dataStore.edit { it[Keys.FPS] = value }
 
     suspend fun setThermalStatus(value: Int) = context.dataStore.edit { it[Keys.THERMAL] = value }
+
+    suspend fun setDnd(enabled: Boolean) = context.dataStore.edit { it[Keys.DND] = enabled }
+
+    /**
+     * Moves [packageName] to the front of the recent list, keeping the most
+     * recently launched games first and capping the list length.
+     */
+    suspend fun pushRecent(packageName: String) = context.dataStore.edit { prefs ->
+        val current = prefs[Keys.RECENTS]
+            ?.split(RECENT_SEPARATOR)
+            ?.filter { it.isNotBlank() }
+            ?: emptyList()
+        val updated = (listOf(packageName) + current.filter { it != packageName })
+            .take(MAX_RECENTS)
+        prefs[Keys.RECENTS] = updated.joinToString(RECENT_SEPARATOR)
+    }
+
+    companion object {
+        private const val RECENT_SEPARATOR = "\n"
+        private const val MAX_RECENTS = 8
+    }
 }

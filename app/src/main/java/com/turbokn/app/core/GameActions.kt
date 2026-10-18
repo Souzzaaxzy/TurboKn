@@ -17,6 +17,9 @@ object GameActions {
     /** Valid values accepted by `cmd game set --fps`. 0 disables the override. */
     val FPS_STEPS = listOf(0, 30, 45, 60, 90, 120)
 
+    /** Thermal override levels accepted by `cmd thermalservice override-status`. */
+    val THERMAL_STEPS = (0..6).toList()
+
     fun setPerformanceMode(pkg: String): String =
         ShizukuShell.exec("cmd game mode performance $pkg")
 
@@ -58,11 +61,20 @@ object GameActions {
     fun resetThermal(): String =
         ShizukuShell.exec("cmd thermalservice reset")
 
-    fun thermalStatus(): String =
-        ShizukuShell.exec("dumpsys thermalservice | grep -i \"Thermal Status\"")
+    /** Current global interruption filter, as reported by the platform. */
+    fun zenMode(): Int =
+        ShizukuShell.exec("settings get global zen_mode").trim().toIntOrNull() ?: 0
 
-    fun foregroundPackage(): String =
-        ShizukuShell.exec("dumpsys activity activities | grep -m1 mResumedActivity")
+    /**
+     * Toggles "do not disturb" through the notification shell command, which is
+     * the supported route for the shell user. `zen_mode` 1 keeps alarms and
+     * priority contacts, the same trade-off the stock game boosters make.
+     */
+    fun setDnd(enabled: Boolean): String =
+        ShizukuShell.exec("cmd notification set_dnd ${if (enabled) "on" else "off"}")
+
+    fun restoreZenMode(value: Int): String =
+        ShizukuShell.exec("settings put global zen_mode $value")
 
     /**
      * A package counts as a game when the platform reports game modes for it.

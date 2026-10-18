@@ -22,6 +22,9 @@ class AutoModeController(private val context: Context) {
     @Volatile
     private var activePackage: String? = null
 
+    @Volatile
+    private var zenModeBefore: Int? = null
+
     fun onForegroundPackage(pkg: String) {
         scope.launch {
             val settings = store.current()
@@ -31,8 +34,10 @@ class AutoModeController(private val context: Context) {
 
             if (activePackage != null) {
                 val previous = activePackage!!
+                val previousZen = zenModeBefore
                 activePackage = null
-                withContext(Dispatchers.IO) { ProfileEngine.revert(settings, previous) }
+                zenModeBefore = null
+                withContext(Dispatchers.IO) { ProfileEngine.revert(settings, previous, previousZen) }
             }
 
             val isGame = withContext(Dispatchers.IO) { GameActions.isGamePackage(pkg) }
@@ -48,18 +53,23 @@ class AutoModeController(private val context: Context) {
             }
 
             ShizukuNotifier.clear(context)
-            withContext(Dispatchers.IO) { ProfileEngine.apply(settings, pkg) }
+            withContext(Dispatchers.IO) {
+                if (settings.dnd) zenModeBefore = GameActions.zenMode()
+                ProfileEngine.apply(settings, pkg)
+            }
             activePackage = pkg
         }
     }
 
     fun stop() {
         val previous = activePackage
+        val previousZen = zenModeBefore
         activePackage = null
+        zenModeBefore = null
         if (previous != null) {
             scope.launch {
                 val settings = store.current()
-                withContext(Dispatchers.IO) { ProfileEngine.revert(settings, previous) }
+                withContext(Dispatchers.IO) { ProfileEngine.revert(settings, previous, previousZen) }
             }
         }
         scope.cancel()

@@ -6,8 +6,10 @@ import android.content.Context
 import android.provider.Settings
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.turbokn.app.core.DeviceMetrics
 import com.turbokn.app.core.GameActions
 import com.turbokn.app.core.GameWatcherService
+import com.turbokn.app.core.MetricsReader
 import com.turbokn.app.core.ProfileEngine
 import com.turbokn.app.core.ShizukuNotifier
 import com.turbokn.app.data.AppEntry
@@ -23,21 +25,24 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-enum class ShizukuState { NOT_RUNNING, PERMISSION_DENIED, READY }
+/** How far the Shizuku bridge has progressed. */
+enum class ShizukuState { OFFLINE, PERMISSION_REQUIRED, CONNECTING, READY }
 
 data class UiState(
-    val shizuku: ShizukuState = ShizukuState.NOT_RUNNING,
+    val shizuku: ShizukuState = ShizukuState.OFFLINE,
     val apps: List<AppEntry> = emptyList(),
+    val recents: List<AppEntry> = emptyList(),
     val selected: AppEntry? = null,
     val downscale: String = "disable",
     val fps: Int = 0,
+    val thermalStatus: Int = 0,
+    val dnd: Boolean = false,
     val autoMode: Boolean = false,
     val accessibilityEnabled: Boolean = false,
     val active: Boolean = false,
     val activePackage: String? = null,
-    val thermalStatus: Int = 0,
+    val metrics: DeviceMetrics = DeviceMetrics(),
     val log: List<String> = emptyList(),
-    val output: String = "",
 )
 
 class MainViewModel(app: Application) : AndroidViewModel(app) {
@@ -46,6 +51,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val state: StateFlow<UiState> = _state.asStateFlow()
 
     private val store = SettingsStore(app)
+
+    /** Captured before DND is enabled so the user's own filter can be restored. */
+    private var zenModeBefore: Int? = null
 
     init {
         restoreSettings()
@@ -58,40 +66,57 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 delay(2000)
             }
         }
+        viewModelScope.launch {
+            while (true) {
+                if (_state.value.active) refreshMetrics()
+                delay(5000)
+            }
+        }
     }
 
     /** Loads the persisted profile so the UI matches what automatic mode uses. */
     private fun restoreSettings() {
         viewModelScope.launch {
             val saved = store.current()
-            val entry = saved.packageName?.let { AppEntry(it, saved.label ?: it) }
             _state.update {
                 it.copy(
                     autoMode = saved.autoMode,
-                    selected = entry ?: it.selected,
                     downscale = saved.downscale,
                     fps = saved.fps,
                     thermalStatus = saved.thermalStatus,
+                    dnd = saved.dnd,
                 )
             }
+            val context = getApplication<Application>()
+            val recents = withContext(Dispatchers.IO) {
+                saved.recentPackages.mapNotNull { InstalledApps.entryFor(context, it) }
+            }
+            val target = saved.packageName?.let { pkg ->
+                recents.firstOrNull { it.packageName == pkg }
+                    ?: withContext(Dispatchers.IO) { InstalledApps.entryFor(context, pkg) }
+            }
+            _state.update { it.copy(recents = recents, selected = target ?: it.selected) }
         }
     }
 
     fun refreshShizuku() {
         val newState = when {
-            !ShizukuShell.isBinderAlive -> ShizukuState.NOT_RUNNING
-            !ShizukuShell.isPermissionGranted -> ShizukuState.PERMISSION_DENIED
-            else -> ShizukuState.READY
+            !ShizukuShell.isBinderAlive -> ShizukuState.OFFLINE
+            !ShizukuShell.isPermissionGranted -> ShizukuState.PERMISSION_REQUIRED
+            ShizukuShell.isReady -> ShizukuState.READY
+            else -> ShizukuState.CONNECTING
         }
-        if (newState == ShizukuState.READY && _state.value.shizuku != ShizukuState.READY) {
+        if (newState != ShizukuState.OFFLINE &&
+            newState != ShizukuState.PERMISSION_REQUIRED &&
+            _state.value.shizuku != ShizukuState.READY
+        ) {
             ShizukuShell.bind()
         }
         _state.update { it.copy(shizuku = newState) }
     }
 
     private fun refreshAccessibility() {
-        val enabled = isAccessibilityEnabled(getApplication())
-        _state.update { it.copy(accessibilityEnabled = enabled) }
+        _state.update { it.copy(accessibilityEnabled = isAccessibilityEnabled(getApplication())) }
     }
 
     private fun isAccessibilityEnabled(context: Context): Boolean {
@@ -105,9 +130,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun loadApps() {
         viewModelScope.launch {
-            val apps = withContext(Dispatchers.IO) {
-                InstalledApps.launchable(getApplication())
-            }
+            val apps = withContext(Dispatchers.IO) { InstalledApps.launchable(getApplication()) }
             _state.update { it.copy(apps = apps) }
         }
     }
@@ -117,13 +140,25 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             delay(500)
             refreshShizuku()
-            if (_state.value.shizuku == ShizukuState.READY) ShizukuShell.bind()
         }
     }
 
     fun select(entry: AppEntry) {
         _state.update { it.copy(selected = entry) }
-        viewModelScope.launch { store.setTarget(entry.packageName, entry.label) }
+        viewModelScope.launch {
+            store.setTarget(entry.packageName, entry.label)
+            store.pushRecent(entry.packageName)
+            refreshRecents()
+        }
+    }
+
+    private suspend fun refreshRecents() {
+        val context = getApplication<Application>()
+        val saved = store.current()
+        val recents = withContext(Dispatchers.IO) {
+            saved.recentPackages.mapNotNull { InstalledApps.entryFor(context, it) }
+        }
+        _state.update { it.copy(recents = recents) }
     }
 
     fun setDownscale(value: String) {
@@ -139,6 +174,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun setThermalStatus(value: Int) {
         _state.update { it.copy(thermalStatus = value) }
         viewModelScope.launch { store.setThermalStatus(value) }
+    }
+
+    fun setDnd(enabled: Boolean) {
+        _state.update { it.copy(dnd = enabled) }
+        viewModelScope.launch { store.setDnd(enabled) }
     }
 
     fun setAutoMode(enabled: Boolean) {
@@ -158,12 +198,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             appendLog("Ativando modo performance para ${target.label}…")
             val settings = store.current()
             val lines = withContext(Dispatchers.IO) {
+                zenModeBefore = if (settings.dnd) GameActions.zenMode() else null
                 ProfileEngine.apply(settings, target.packageName)
             }
             lines.forEach(::appendLog)
             ShizukuNotifier.clear(getApplication())
             _state.update { it.copy(active = true, activePackage = target.packageName) }
-            refreshThermal()
+            refreshMetrics()
         }
     }
 
@@ -173,26 +214,20 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             if (pkg != null && s.shizuku == ShizukuState.READY) {
                 val settings = store.current()
-                withContext(Dispatchers.IO) { ProfileEngine.revert(settings, pkg) }
+                val previousZen = zenModeBefore
+                zenModeBefore = null
+                withContext(Dispatchers.IO) { ProfileEngine.revert(settings, pkg, previousZen) }
             }
             _state.update { it.copy(active = false, activePackage = null) }
             if (!silent) appendLog("modo desativado, configurações restauradas")
         }
     }
 
-    fun refreshThermal() {
+    fun refreshMetrics() {
         viewModelScope.launch {
-            val out = withContext(Dispatchers.IO) { GameActions.thermalStatus() }
-            _state.update { it.copy(output = out) }
-        }
-    }
-
-    fun runCustomCommand(command: String) {
-        if (command.isBlank()) return
-        viewModelScope.launch {
-            val out = withContext(Dispatchers.IO) { ShizukuShell.exec(command) }
-            appendLog("$ $command")
-            appendLog(out.ifBlank { "(sem saída)" })
+            val target = _state.value.activePackage
+            val sample = withContext(Dispatchers.IO) { MetricsReader.sample(target) }
+            _state.update { it.copy(metrics = sample) }
         }
     }
 

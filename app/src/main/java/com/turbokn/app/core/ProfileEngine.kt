@@ -23,6 +23,11 @@ object ProfileEngine {
         val kill = GameActions.killBackground()
         log += "background liberado: ${kill.ifBlank { "ok" }}"
 
+        if (settings.dnd) {
+            GameActions.setDnd(true)
+            log += "não perturbe ativado"
+        }
+
         if (settings.thermalStatus > 0) {
             val thermal = GameActions.overrideThermal(settings.thermalStatus)
             log += "térmica: ${thermal.ifBlank { "override aplicado" }}"
@@ -31,11 +36,18 @@ object ProfileEngine {
         return log
     }
 
-    /** Restores the device defaults for the given package. */
-    fun revert(settings: ProfileSettings, pkg: String) {
+    /**
+     * Restores the device defaults for the given package. [previousZenMode] is
+     * the value read before DND was enabled, so the user's own setting wins
+     * over a hard-coded "off".
+     */
+    fun revert(settings: ProfileSettings, pkg: String, previousZenMode: Int? = null) {
         GameActions.resetGame(pkg)
         if (settings.thermalStatus > 0) {
             GameActions.resetThermal()
+        }
+        if (settings.dnd) {
+            GameActions.restoreZenMode(previousZenMode ?: 0)
         }
     }
 }

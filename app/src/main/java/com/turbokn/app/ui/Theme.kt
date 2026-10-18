@@ -69,10 +69,10 @@ private val TurboKnTypography = Typography(
         letterSpacing = 0.4.sp,
     ),
     labelSmall = TextStyle(
-        fontFamily = FontFamily.Monospace,
-        fontWeight = FontWeight.Normal,
+        fontFamily = FontFamily.SansSerif,
+        fontWeight = FontWeight.Medium,
         fontSize = 11.sp,
-        letterSpacing = 1.sp,
+        letterSpacing = 0.6.sp,
     ),
 )
 

@@ -11,7 +11,9 @@ permissions:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    # Pinned: the ubuntu-latest image migrates to Ubuntu 26 and can break the
+    # Android SDK setup without warning.
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout
