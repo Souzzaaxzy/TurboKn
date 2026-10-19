@@ -15,6 +15,7 @@ import com.turbokn.app.core.GameWatcherService
 import com.turbokn.app.core.MetricsReader
 import com.turbokn.app.core.OverlayCoordinator
 import com.turbokn.app.core.ProfileEngine
+import com.turbokn.app.core.ProfileStep
 import com.turbokn.app.core.ShizukuNotifier
 import com.turbokn.app.data.AppEntry
 import com.turbokn.app.data.InstalledApps
@@ -42,6 +43,7 @@ data class UiState(
     val downscale: String = "disable",
     val fps: Int = 0,
     val thermalStatus: Int = 0,
+    val fixedPerf: Boolean = false,
     val dnd: Boolean = false,
     val overlay: Boolean = true,
     val overlayAllowed: Boolean = false,
@@ -96,6 +98,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     downscale = saved.downscale,
                     fps = saved.fps,
                     thermalStatus = saved.thermalStatus,
+                    fixedPerf = saved.fixedPerf,
                     dnd = saved.dnd,
                     overlay = saved.overlay,
                 )
@@ -208,6 +211,19 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch { store.setDnd(enabled) }
     }
 
+    fun setFixedPerf(enabled: Boolean) {
+        _state.update { it.copy(fixedPerf = enabled) }
+        viewModelScope.launch { store.setFixedPerf(enabled) }
+        // Apply immediately when a game is already running, so the toggle is
+        // not a setting that only takes effect on the next activation.
+        BoostState.activePackage ?: return
+        if (_state.value.shizuku != ShizukuState.READY) return
+        viewModelScope.launch {
+            val out = withContext(Dispatchers.IO) { GameActions.setFixedPerformance(enabled) }
+            logStep(ProfileStep("clocks fixos", out, ok = !out.startsWith("error:")))
+        }
+    }
+
     fun setOverlay(enabled: Boolean) {
         _state.update { it.copy(overlay = enabled) }
         BoostState.overlayEnabled = enabled
@@ -297,13 +313,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     /** Feeds the HUD's FPS readout while a profile is active. */
     private fun startOverlayFpsLoop() {
         if (overlayFpsJob != null) return
+        val pkg = BoostState.activePackage ?: return
         overlayFpsJob = viewModelScope.launch {
+            withContext(Dispatchers.IO) { FpsSampler.start(pkg) }
             while (true) {
-                val pkg = BoostState.activePackage
-                if (pkg == null) break
-                val value = withContext(Dispatchers.IO) { FpsSampler.sample(pkg) }
+                val current = BoostState.activePackage
+                if (current == null) break
+                val value = withContext(Dispatchers.IO) { FpsSampler.sample(current) }
                 GameOverlay.updateFps(value)
-                delay(1000)
+                delay(FPS_REFRESH_MS)
             }
             overlayFpsJob = null
         }
@@ -328,7 +346,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun applyProfile(settings: ProfileSettings, pkg: String) {
         zenModeBefore = if (settings.dnd) GameActions.zenMode() else null
-        ProfileEngine.apply(settings, pkg).forEach(::appendLog)
+        ProfileEngine.apply(settings, pkg).forEach(::logStep)
+    }
+
+    /** Surfaces each command's outcome, including the ones the device rejected. */
+    private fun logStep(step: ProfileStep) {
+        val detail = step.output.lineSequence().firstOrNull { it.isNotBlank() }
+        if (step.ok) {
+            appendLog(if (detail == null) "${step.label} ok" else "${step.label}: $detail")
+        } else {
+            appendLog("${step.label} FALHOU: ${detail ?: "sem detalhe"}")
+        }
     }
 
     /** Mirrors the active package into the shared state the overlay reads. */
@@ -339,7 +367,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private suspend fun revertProfile(pkg: String, previousZenMode: Int?) {
         val settings = store.current()
-        ProfileEngine.revert(settings, pkg, previousZenMode)
+        ProfileEngine.revert(settings, pkg, previousZenMode).forEach(::logStep)
     }
 
     fun deactivate(silent: Boolean = false) {
@@ -406,5 +434,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun appendLog(line: String) {
         _state.update { it.copy(log = (it.log + line).takeLast(60)) }
+    }
+
+    private companion object {
+        /** FPS is resampled every 2s: each sample spawns a shell process. */
+        const val FPS_REFRESH_MS = 2000L
     }
 }

@@ -61,7 +61,18 @@ object GameActions {
     fun resetThermal(): String =
         ShizukuShell.exec("cmd thermalservice reset")
 
-    /** Current global interruption filter, as reported by the platform. */
+    /**
+     * Pins CPU and GPU clocks to a fixed operating point (Android 11+).
+     *
+     * This is the legitimate version of what "booster" apps fake: it removes
+     * clock variance instead of claiming to raise the ceiling. On modern
+     * devices the upper and lower bounds meet at one point, which trades peak
+     * burst speed for consistent frame times — the thing you actually feel.
+     */
+    fun setFixedPerformance(enabled: Boolean): String =
+        ShizukuShell.exec("cmd power set-fixed-performance-mode-enabled $enabled")
+
+    /** Current interruption filter, as reported by the platform. */
     fun zenMode(): Int =
         ShizukuShell.exec("settings get global zen_mode").trim().toIntOrNull() ?: 0
 

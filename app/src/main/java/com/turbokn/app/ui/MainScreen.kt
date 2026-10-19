@@ -113,6 +113,16 @@ fun MainScreen(
                 labelFor = { if (it == 0) "OFF" else it.toString() },
                 onSelect = vm::setFps,
             )
+
+            Spacer(Modifier.height(16.dp))
+
+            ToggleRow(
+                title = "Clocks fixos (CPU e GPU)",
+                hint = "Prende os clocks num ponto estável em vez de variar. " +
+                    "Reduz a oscilação entre quadros — é o que se sente como fluidez.",
+                checked = state.fixedPerf,
+                onChange = vm::setFixedPerf,
+            )
         }
 
         SectionCard(title = "INTERRUPÇÕES") {
@@ -300,7 +310,7 @@ private fun MetricsCard(metrics: DeviceMetrics, active: Boolean) {
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             MetricTile(
                 label = "FLUIDEZ",
-                value = metrics.fps?.let { "$it%" } ?: "—",
+                value = metrics.smoothness?.let { "$it%" } ?: "—",
                 modifier = Modifier.weight(1f),
             )
             MetricTile(

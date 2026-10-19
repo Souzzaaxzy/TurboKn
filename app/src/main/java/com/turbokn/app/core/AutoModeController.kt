@@ -93,12 +93,12 @@ class AutoModeController(private val context: Context) {
     }
 
     /**
-     * Samples the game's own frame counter while the overlay is visible.
+     * Samples the game's frame rate through SurfaceFlinger while the HUD is up.
      */
     private fun startFpsSampling(pkg: String) {
         fpsJob?.cancel()
-        FpsSampler.reset(pkg)
         fpsJob = scope.launch {
+            withContext(Dispatchers.IO) { FpsSampler.start(pkg) }
             while (isActive) {
                 val value = withContext(Dispatchers.IO) { FpsSampler.sample(pkg) }
                 GameOverlay.updateFps(value)
@@ -129,6 +129,6 @@ class AutoModeController(private val context: Context) {
     }
 
     private companion object {
-        const val FPS_SAMPLE_MS = 1000L
+        const val FPS_SAMPLE_MS = 2000L
     }
 }

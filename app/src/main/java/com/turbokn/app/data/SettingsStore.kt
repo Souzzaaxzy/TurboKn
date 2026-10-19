@@ -21,6 +21,7 @@ data class ProfileSettings(
     val downscale: String = "disable",
     val fps: Int = 0,
     val thermalStatus: Int = 0,
+    val fixedPerf: Boolean = false,
     val dnd: Boolean = false,
     val overlay: Boolean = true,
     val recentPackages: List<String> = emptyList(),
@@ -39,6 +40,7 @@ class SettingsStore(private val context: Context) {
         val DOWNSCALE = stringPreferencesKey("downscale")
         val FPS = intPreferencesKey("fps")
         val THERMAL = intPreferencesKey("thermal_status")
+        val FIXED_PERF = booleanPreferencesKey("fixed_perf")
         val DND = booleanPreferencesKey("dnd")
         val OVERLAY = booleanPreferencesKey("overlay")
         val RECENTS = stringPreferencesKey("recent_packages")
@@ -52,6 +54,7 @@ class SettingsStore(private val context: Context) {
             downscale = prefs[Keys.DOWNSCALE] ?: "disable",
             fps = prefs[Keys.FPS] ?: 0,
             thermalStatus = prefs[Keys.THERMAL] ?: 0,
+            fixedPerf = prefs[Keys.FIXED_PERF] ?: false,
             dnd = prefs[Keys.DND] ?: false,
             overlay = prefs[Keys.OVERLAY] ?: true,
             recentPackages = prefs[Keys.RECENTS]
@@ -77,6 +80,9 @@ class SettingsStore(private val context: Context) {
     suspend fun setThermalStatus(value: Int) = context.dataStore.edit { it[Keys.THERMAL] = value }
 
     suspend fun setDnd(enabled: Boolean) = context.dataStore.edit { it[Keys.DND] = enabled }
+
+    suspend fun setFixedPerf(enabled: Boolean) =
+        context.dataStore.edit { it[Keys.FIXED_PERF] = enabled }
 
     suspend fun setOverlay(enabled: Boolean) = context.dataStore.edit { it[Keys.OVERLAY] = enabled }
 

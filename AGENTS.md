@@ -48,10 +48,20 @@ artefato `TurboKn-debug-apk`. O runner é fixado de propósito.
   combina o evento da acessibilidade com um polling via Shizuku. Nunca chamar
   `GameOverlay.show` direto — sempre pelo coordenador, senão o HUD fica preso na
   tela ao sair do jogo.
-- **FPS do overlay.** `FpsSampler` lê `dumpsys gfxinfo <pkg>` e divide a
-  diferença de quadros pelo tempo. Medir os quadros do próprio app não serve: o
-  overlay é desenhado em outro processo. A primeira leitura é só a linha de
-  base, por isso o mostrador começa em `--`.
+- **FPS do overlay.** `FpsSampler` lê `dumpsys SurfaceFlinger --timestats`
+  (média por layer), com fallback para `--latency`. **Nunca** usar
+  `dumpsys gfxinfo` para FPS de jogo: ele só conta quadros do toolkit de UI e
+  fica em 0 para jogos, que desenham via SurfaceView com GL/Vulkan. Era a causa
+  do mostrador travado em 0.
+- **`am kill-all` nunca no perfil.** Rodar na abertura do jogo derruba serviços
+  do próprio jogo e causa travamento — o oposto do objetivo. Fica só no botão
+  manual. O Android já rebaixa processos em segundo plano sozinho.
+- **Custo de cada `exec`.** Todo comando shell cria um processo. Agrupar tudo num
+  único script por amostra, e não amostrar mais rápido que 2s, senão a medição
+  vira parte do problema.
+- **Clocks fixos.** `cmd power set-fixed-performance-mode-enabled` não eleva o
+  teto de frequência; ele remove a variância. Serve para reduzir jank, não para
+  aumentar FPS médio.
 - **Ordem ao abrir o jogo.** O perfil é aplicado *antes* de lançar o app
   (`InstalledApps.launch`). Invertendo a ordem, o jogo sobe com a configuração
   padrão e o downscale só vale no próximo início.

@@ -7,77 +7,93 @@ data class DeviceMetrics(
     val temperatureCelsius: Float? = null,
     val cpuClockMhz: Int? = null,
     val thermalStatus: Int? = null,
-    val fps: Int? = null,
+    /** Percentage of frames that were not janky. Not a frame rate. */
+    val smoothness: Int? = null,
 )
 
 /**
- * Reads live device state through Shizuku. Every value is best effort: kernel
- * paths differ between vendors, so a missing reading stays null instead of
- * failing the whole sample.
+ * Reads live device state through Shizuku.
+ *
+ * All four readings come from a single shell invocation. Each exec spawns a
+ * process, and sampling every few seconds during a game would otherwise cost
+ * frames in the very thing being measured. Every value is best effort: kernel
+ * paths differ between vendors, so a missing reading stays null.
  */
 object MetricsReader {
 
-    fun sample(targetPackage: String?): DeviceMetrics = DeviceMetrics(
-        temperatureCelsius = readTemperature(),
-        cpuClockMhz = readCpuClock(),
-        thermalStatus = readThermalStatus(),
-        fps = targetPackage?.let { readFps(it) },
-    )
-
-    /**
-     * Reads every thermal zone in one shell call and keeps the highest reading.
-     * Vendors differ on units and on which zone tracks the SoC, so implausible
-     * values are discarded rather than shown as a wrong number.
-     */
-    private fun readTemperature(): Float? {
-        // Each zone is echoed on its own line: /sys files may lack a trailing
-        // newline, which would merge two readings into one bogus number.
-        val output = ShizukuShell.exec(
-            "for f in /sys/class/thermal/thermal_zone*/temp; do cat \"${'$'}f\"; echo; done"
-        )
-        if (output.startsWith("error:")) return null
-        return output.lineSequence()
-            .mapNotNull { it.trim().toIntOrNull() }
-            .mapNotNull { raw ->
-                when {
-                    raw in 100..1500 -> raw / 10f
-                    raw in 10..99 -> raw.toFloat()
-                    else -> null
-                }
+    fun sample(targetPackage: String?): DeviceMetrics {
+        val script = buildString {
+            append("echo __TEMP__; ")
+            append("for f in /sys/class/thermal/thermal_zone*/temp; do cat \"${'$'}f\" 2>/dev/null; echo; done; ")
+            append("echo __CLOCK__; ")
+            append("for f in /sys/devices/system/cpu/cpu*/cpufreq/scaling_cur_freq; do cat \"${'$'}f\" 2>/dev/null; echo; done; ")
+            append("echo __THERMAL__; ")
+            append("dumpsys thermalservice | grep -m1 \"Thermal Status:\"; ")
+            if (targetPackage != null) {
+                append("echo __FRAMES__; ")
+                append("dumpsys gfxinfo $targetPackage | grep -E \"Total frames rendered|Janky frames\"")
             }
-            .maxOrNull()
-    }
+        }
 
-    /** Highest current core clock, in MHz. Cores differ, so the max is shown. */
-    private fun readCpuClock(): Int? {
-        val output = ShizukuShell.exec(
-            "for f in /sys/devices/system/cpu/cpu*/cpufreq/scaling_cur_freq; do cat \"${'$'}f\"; echo; done"
+        val output = ShizukuShell.exec(script)
+        if (output.startsWith("error:")) return DeviceMetrics()
+
+        val sections = splitSections(output)
+        return DeviceMetrics(
+            temperatureCelsius = parseTemperature(sections["__TEMP__"].orEmpty()),
+            cpuClockMhz = parseClock(sections["__CLOCK__"].orEmpty()),
+            thermalStatus = parseThermal(sections["__THERMAL__"].orEmpty()),
+            smoothness = parseSmoothness(sections["__FRAMES__"].orEmpty()),
         )
-        if (output.startsWith("error:")) return null
-        return output.lineSequence()
-            .mapNotNull { it.trim().toIntOrNull() }
-            .maxOrNull()
-            ?.let { it / 1000 }
     }
 
-    private fun readThermalStatus(): Int? {
-        val output = ShizukuShell.exec("dumpsys thermalservice")
-        val match = Regex("Thermal Status: (\\d+)").find(output) ?: return null
-        return match.groupValues[1].toIntOrNull()
+    private fun splitSections(output: String): Map<String, String> {
+        val sections = mutableMapOf<String, String>()
+        var key: String? = null
+        val buffer = StringBuilder()
+
+        for (line in output.lineSequence()) {
+            val trimmed = line.trim()
+            if (trimmed.startsWith("__") && trimmed.endsWith("__")) {
+                key?.let { sections[it] = buffer.toString() }
+                buffer.setLength(0)
+                key = trimmed
+            } else if (key != null) {
+                buffer.appendLine(trimmed)
+            }
+        }
+        key?.let { sections[it] = buffer.toString() }
+        return sections
     }
 
     /**
-     * Percentage of rendered frames that were not janky, derived from the
-     * frame stats the platform keeps per package. This is a smoothness
-     * indicator, not a raw FPS counter.
+     * Keeps the highest plausible reading. Vendors differ on units and on which
+     * zone tracks the SoC, so implausible values are discarded instead of being
+     * shown as a wrong number.
      */
-    private fun readFps(pkg: String): Int? {
-        val output = ShizukuShell.exec("dumpsys gfxinfo $pkg framestats")
-        if (output.startsWith("error:")) return null
+    private fun parseTemperature(raw: String): Float? = raw.lineSequence()
+        .mapNotNull { it.trim().toIntOrNull() }
+        .mapNotNull { value ->
+            when {
+                value in 100..1500 -> value / 10f
+                value in 10..99 -> value.toFloat()
+                else -> null
+            }
+        }
+        .maxOrNull()
 
-        val total = Regex("Total frames rendered: (\\d+)").find(output)
+    private fun parseClock(raw: String): Int? = raw.lineSequence()
+        .mapNotNull { it.trim().toIntOrNull() }
+        .maxOrNull()
+        ?.let { it / 1000 }
+
+    private fun parseThermal(raw: String): Int? =
+        Regex("Thermal Status: (\\d+)").find(raw)?.groupValues?.get(1)?.toIntOrNull()
+
+    private fun parseSmoothness(raw: String): Int? {
+        val total = Regex("Total frames rendered: (\\d+)").find(raw)
             ?.groupValues?.get(1)?.toIntOrNull() ?: return null
-        val janky = Regex("Janky frames: (\\d+)").find(output)
+        val janky = Regex("Janky frames: (\\d+)").find(raw)
             ?.groupValues?.get(1)?.toIntOrNull() ?: 0
         if (total <= 0) return null
         return ((total - janky) * 100 / total).coerceIn(0, 100)
