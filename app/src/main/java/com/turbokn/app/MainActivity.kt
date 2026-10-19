@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
+import androidx.core.net.toUri
 import com.turbokn.app.ui.MainScreen
 import com.turbokn.app.ui.TurboKnTheme
 
@@ -30,7 +31,15 @@ class MainActivity : ComponentActivity() {
                     MainScreen(
                         onOpenAccessibility = {
                             startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-                        }
+                        },
+                        onOpenOverlaySettings = {
+                            startActivity(
+                                Intent(
+                                    Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                    "package:$packageName".toUri(),
+                                )
+                            )
+                        },
                     )
                 }
             }

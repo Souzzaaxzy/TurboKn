@@ -40,6 +40,7 @@ import com.turbokn.app.core.GameActions
 @Composable
 fun MainScreen(
     onOpenAccessibility: () -> Unit = {},
+    onOpenOverlaySettings: () -> Unit = {},
     vm: MainViewModel = viewModel(),
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
@@ -121,6 +122,31 @@ fun MainScreen(
                 checked = state.dnd,
                 onChange = vm::setDnd,
             )
+        }
+
+        SectionCard(title = "OVERLAY NO JOGO") {
+            ToggleRow(
+                title = "Mostrar painel durante o jogo",
+                hint = if (state.overlayAllowed) {
+                    "Nome do jogo no topo e FPS no canto inferior esquerdo."
+                } else {
+                    "Precisa da permissão \"sobrepor outros apps\"."
+                },
+                checked = state.overlay,
+                onChange = vm::setOverlay,
+            )
+            if (!state.overlayAllowed) {
+                Spacer(Modifier.height(12.dp))
+                Button(
+                    onClick = onOpenOverlaySettings,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    ),
+                ) {
+                    Text("PERMITIR SOBREPOSIÇÃO", style = MaterialTheme.typography.labelSmall)
+                }
+            }
         }
 
         SectionCard(title = "TÉRMICA") {

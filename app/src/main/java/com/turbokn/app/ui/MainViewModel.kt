@@ -6,10 +6,14 @@ import android.content.Context
 import android.provider.Settings
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.turbokn.app.core.BoostState
 import com.turbokn.app.core.DeviceMetrics
+import com.turbokn.app.core.FpsSampler
 import com.turbokn.app.core.GameActions
+import com.turbokn.app.core.GameOverlay
 import com.turbokn.app.core.GameWatcherService
 import com.turbokn.app.core.MetricsReader
+import com.turbokn.app.core.OverlayCoordinator
 import com.turbokn.app.core.ProfileEngine
 import com.turbokn.app.core.ShizukuNotifier
 import com.turbokn.app.data.AppEntry
@@ -18,6 +22,7 @@ import com.turbokn.app.data.ProfileSettings
 import com.turbokn.app.data.SettingsStore
 import com.turbokn.app.shizuku.ShizukuShell
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -38,6 +43,8 @@ data class UiState(
     val fps: Int = 0,
     val thermalStatus: Int = 0,
     val dnd: Boolean = false,
+    val overlay: Boolean = true,
+    val overlayAllowed: Boolean = false,
     val autoMode: Boolean = false,
     val accessibilityEnabled: Boolean = false,
     val active: Boolean = false,
@@ -56,6 +63,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     /** Captured before DND is enabled so the user's own filter can be restored. */
     private var zenModeBefore: Int? = null
 
+    private var overlayFpsJob: Job? = null
+
     init {
         restoreSettings()
         refreshShizuku()
@@ -64,6 +73,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             while (true) {
                 refreshShizuku()
                 refreshAccessibility()
+                refreshOverlayPermission()
                 delay(2000)
             }
         }
@@ -79,6 +89,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private fun restoreSettings() {
         viewModelScope.launch {
             val saved = store.current()
+            BoostState.overlayEnabled = saved.overlay
             _state.update {
                 it.copy(
                     autoMode = saved.autoMode,
@@ -86,6 +97,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     fps = saved.fps,
                     thermalStatus = saved.thermalStatus,
                     dnd = saved.dnd,
+                    overlay = saved.overlay,
                 )
             }
             val context = getApplication<Application>()
@@ -118,6 +130,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun refreshAccessibility() {
         _state.update { it.copy(accessibilityEnabled = isAccessibilityEnabled(getApplication())) }
+    }
+
+    private fun refreshOverlayPermission() {
+        val allowed = Settings.canDrawOverlays(getApplication())
+        _state.update { it.copy(overlayAllowed = allowed) }
     }
 
     private fun isAccessibilityEnabled(context: Context): Boolean {
@@ -191,6 +208,19 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch { store.setDnd(enabled) }
     }
 
+    fun setOverlay(enabled: Boolean) {
+        _state.update { it.copy(overlay = enabled) }
+        BoostState.overlayEnabled = enabled
+        viewModelScope.launch { store.setOverlay(enabled) }
+        if (!enabled) {
+            stopOverlay()
+            return
+        }
+        if (_state.value.active) {
+            showOverlayIfEnabled()
+        }
+    }
+
     fun setAutoMode(enabled: Boolean) {
         _state.update { it.copy(autoMode = enabled) }
         viewModelScope.launch { store.setAutoMode(enabled) }
@@ -210,6 +240,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             withContext(Dispatchers.IO) { applyProfile(settings, target.packageName) }
             ShizukuNotifier.clear(getApplication())
             _state.update { it.copy(active = true, activePackage = target.packageName) }
+            syncBoostState(target.packageName, target.label)
+            showOverlayIfEnabled()
             refreshMetrics()
         }
     }
@@ -243,9 +275,46 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             withContext(Dispatchers.IO) { applyProfile(settings, target.packageName) }
             ShizukuNotifier.clear(getApplication())
             _state.update { it.copy(active = true, activePackage = target.packageName) }
+            syncBoostState(target.packageName, target.label)
             startGame(target)
+            showOverlayIfEnabled()
             refreshMetrics()
         }
+    }
+
+    private fun showOverlayIfEnabled() {
+        if (!BoostState.overlayEnabled) return
+        if (!Settings.canDrawOverlays(getApplication())) {
+            appendLog("overlay desativado: falta permitir sobrepor outros apps")
+            return
+        }
+        OverlayCoordinator.showForActiveGame(getApplication())
+        OverlayCoordinator.startWatching(getApplication())
+        FpsSampler.reset(BoostState.activePackage)
+        startOverlayFpsLoop()
+    }
+
+    /** Feeds the HUD's FPS readout while a profile is active. */
+    private fun startOverlayFpsLoop() {
+        if (overlayFpsJob != null) return
+        overlayFpsJob = viewModelScope.launch {
+            while (true) {
+                val pkg = BoostState.activePackage
+                if (pkg == null) break
+                val value = withContext(Dispatchers.IO) { FpsSampler.sample(pkg) }
+                GameOverlay.updateFps(value)
+                delay(1000)
+            }
+            overlayFpsJob = null
+        }
+    }
+
+    private fun stopOverlay() {
+        overlayFpsJob?.cancel()
+        overlayFpsJob = null
+        OverlayCoordinator.stopWatching()
+        FpsSampler.reset()
+        GameOverlay.hide()
     }
 
     private suspend fun startGame(target: AppEntry) {
@@ -260,6 +329,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private fun applyProfile(settings: ProfileSettings, pkg: String) {
         zenModeBefore = if (settings.dnd) GameActions.zenMode() else null
         ProfileEngine.apply(settings, pkg).forEach(::appendLog)
+    }
+
+    /** Mirrors the active package into the shared state the overlay reads. */
+    private fun syncBoostState(pkg: String?, label: String?) {
+        BoostState.activePackage = pkg
+        BoostState.activeLabel = label
     }
 
     private suspend fun revertProfile(pkg: String, previousZenMode: Int?) {
@@ -279,6 +354,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             _state.update {
                 it.copy(active = false, activePackage = null, metrics = DeviceMetrics())
             }
+            syncBoostState(null, null)
+            stopOverlay()
             if (!silent) appendLog("modo desativado, configurações restauradas")
         }
     }
@@ -321,6 +398,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             zenModeBefore = null
             withContext(Dispatchers.IO) { ProfileEngine.revert(settings, pkg, previousZen) }
             _state.update { it.copy(active = false, activePackage = null) }
+            syncBoostState(null, null)
+            stopOverlay()
             appendLog("padrões restaurados para $pkg")
         }
     }

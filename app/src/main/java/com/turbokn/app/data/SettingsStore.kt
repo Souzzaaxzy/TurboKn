@@ -22,6 +22,7 @@ data class ProfileSettings(
     val fps: Int = 0,
     val thermalStatus: Int = 0,
     val dnd: Boolean = false,
+    val overlay: Boolean = true,
     val recentPackages: List<String> = emptyList(),
 )
 
@@ -39,6 +40,7 @@ class SettingsStore(private val context: Context) {
         val FPS = intPreferencesKey("fps")
         val THERMAL = intPreferencesKey("thermal_status")
         val DND = booleanPreferencesKey("dnd")
+        val OVERLAY = booleanPreferencesKey("overlay")
         val RECENTS = stringPreferencesKey("recent_packages")
     }
 
@@ -51,6 +53,7 @@ class SettingsStore(private val context: Context) {
             fps = prefs[Keys.FPS] ?: 0,
             thermalStatus = prefs[Keys.THERMAL] ?: 0,
             dnd = prefs[Keys.DND] ?: false,
+            overlay = prefs[Keys.OVERLAY] ?: true,
             recentPackages = prefs[Keys.RECENTS]
                 ?.split(RECENT_SEPARATOR)
                 ?.filter { it.isNotBlank() }
@@ -74,6 +77,8 @@ class SettingsStore(private val context: Context) {
     suspend fun setThermalStatus(value: Int) = context.dataStore.edit { it[Keys.THERMAL] = value }
 
     suspend fun setDnd(enabled: Boolean) = context.dataStore.edit { it[Keys.DND] = enabled }
+
+    suspend fun setOverlay(enabled: Boolean) = context.dataStore.edit { it[Keys.OVERLAY] = enabled }
 
     /**
      * Moves [packageName] to the front of the recent list, keeping the most

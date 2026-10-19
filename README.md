@@ -27,6 +27,7 @@ Visual preto, branco e cinza, com tema de samurai na neve.
 | Modo automático | Ativa o perfil sozinho quando um jogo abre |
 | Medição | Mostra temperatura, clock da CPU, fluidez e nível de throttling |
 | Status do Shizuku | Indica se o Shizuku está ligado e se o app está conectado a ele |
+| Overlay no jogo | Faixa com o nome do jogo no topo e FPS no canto inferior esquerdo |
 | Restaurar padrões | Desfaz todas as alterações e volta o aparelho ao normal |
 
 ## Requisitos
@@ -34,6 +35,7 @@ Visual preto, branco e cinza, com tema de samurai na neve.
 - Android 11 (API 30) ou superior
 - [Shizuku](https://play.google.com/store/apps/details?id=moe.shizuku.privileged.api)
   instalado e ativo
+- Permissão "sobrepor outros apps" para o overlay
 
 ## Como usar
 
@@ -52,6 +54,10 @@ exibe.
 ## Notas
 
 - O ganho de desempenho depende do aparelho. O limite é o hardware.
+- O overlay só aparece enquanto o jogo está em primeiro plano. Ao sair, ele
+  desaparece sozinho.
+- O FPS mostrado é o do jogo, lido do contador de quadros do sistema. Não é o
+  FPS do app.
 - O override térmico esquenta mais e pode reduzir a vida útil dos componentes.
 - O Shizuku roda como o usuário `shell`. Ajustes de kernel, como governor de
   CPU, exigem root de verdade e não estão disponíveis.
